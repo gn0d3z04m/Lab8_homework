@@ -1,0 +1,116 @@
+name: GitHub Actions 
+run-name: ${{ github.actor }} test
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out repository code
+      uses: actions/checkout@v4
+    - name: Вывод содержимого директории  
+      run: |
+        ls ${{ github.workspace }}
+    - name: CMake Action
+      uses: threeal/cmake-action@v2.1.0
+    - name: Компиляция
+      run: cmake -H. -Bbuild
+    - name: Компиляция2
+      run:  cmake --build build --target=package_all
+    - name: Вывод содержимого директории
+      run: |
+        ls build
+    - name: Upload assets to GitHub release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          build/*.deb
+          build/*.rpm
+          build/*.tar.gz
+          build/*.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+        
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup CMake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.27'
+
+      - name: Debug WiX
+        run: |
+          Get-Command candle.exe -ErrorAction SilentlyContinue
+          candle -?
+
+      - name: Add WiX Toolset to PATH
+        run: |
+          $wixPath = "C:\Program Files (x86)\WiX Toolset v3.14\bin"
+          if (Test-Path $wixPath) {
+            echo "WiX found at $wixPath, adding to PATH..."
+            echo "$wixPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          } else {
+            Write-Error "WiX Toolset not found at $wixPath!"
+            exit 1
+          }
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Generate MSI with CPack
+        run: |
+          cd build
+          cpack -G WIX -C Release -D CPACK_COMPONENTS_ALL=bin
+
+      - name: Upload assets to GitHub release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            build/*.msi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          
+  macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install cmake
+
+      - name: Create build directory
+        run: mkdir build
+
+      - name: Configure CMake
+        run: cmake -S . -B build -DCPACK_GENERATOR="DragNDrop"
+
+      - name: Build
+        run: cmake --build build --target=packageBin_DMG
+
+
+      - name: List build directory contents
+        run: ls -R build
+
+      - name: Upload DMG to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: build/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
